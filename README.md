@@ -21,14 +21,14 @@ FORWORD relies on several third-party components (glog, btor2tools, smt-switch, 
 
 ---
 
-## 2. Repository Layout (Highlights)
+## 2. Repository Layout
 
 - `apps/` – Command-line frontends (e.g., `main_bmc.cpp`).
 - `framework/` – Core transition-system utilities, traversals, e-graph support.
 - `frontend/` – BTOR2 and SMT-LIB parsers/encoders.
 - `sweeper/` – Simulation engine, node data tracking, and the sweeping algorithm.
 - `contrib/` – Setup scripts for external projects.
-- `benchmark/` – 
+- `benchmark/`
 
 ---
 
