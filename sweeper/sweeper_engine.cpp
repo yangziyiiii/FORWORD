@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <algorithm>
+#include <iostream>
 
 using namespace smt;
 using namespace std;
@@ -64,7 +66,9 @@ void post_order(const Term & root,
                 std::string & load_file_path,
                 std::chrono::milliseconds & total_sat_time,
                 std::chrono::milliseconds & total_unsat_time,
-                std::chrono::milliseconds & ordering_time
+                std::chrono::milliseconds & ordering_time,
+                int required_unsat,
+                int required_sat
 ) {
     // 统计总节点
     int total_nodes = 0, processed_nodes = 0;
@@ -75,8 +79,8 @@ void post_order(const Term & root,
     node_stack.push({root,false});
 
     //——— 配置：样本阈值（可根据需要调整/外传） ———//
-    const int NEED_UNSAT = 20;
-    const int NEED_SAT   = 1;
+    const int NEED_UNSAT = std::max(0, required_unsat);
+    const int NEED_SAT   = std::max(0, required_sat);
 
      //——— 相位管理 ———//
     bool apply_only = false;        // // false: 相位A（发现）；true: 相位B（仅应用）
@@ -219,6 +223,8 @@ void post_order(const Term & root,
                     solver->pop();
                 }
             }
+
+
         }
 
         if (term_eq && term_eq != nullptr) {
@@ -241,6 +247,84 @@ void post_order(const Term & root,
 }
 
 
+SweeperStats sweeper(Term & root,
+                     SmtSolver & solver,
+                     const Config & config,
+                     const SweeperOptions & options) {
+    SweeperStats stats;
+    std::unordered_map<Term, NodeData> node_data_map;
+    std::unordered_map<uint32_t, TermVec> hash_term_map;
+    std::unordered_map<Term, Term> substitution_map;
+    std::unordered_map<Term, std::unordered_map<std::string, std::string>> all_luts;
+
+    smt::UnorderedTermSet free_symbols;
+    smt::get_free_symbols(root, free_symbols);
+    std::cout << "[INPUT] Free symbols: " << free_symbols.size() << "\n";
+
+    if (!options.systems.empty()) {
+        bool debug_flag = config.debug;
+        initialize_arrays(options.systems, all_luts, substitution_map, debug_flag);
+    }
+
+    std::string dump_path = config.dump_input_file;
+    std::string load_path = config.load_input_file;
+    simulation(free_symbols,
+               config.simulation_iterations,
+               node_data_map,
+               dump_path,
+               load_path);
+
+    for (const auto & sym : free_symbols) {
+        if (node_data_map[sym].get_simulation_data().size() != static_cast<size_t>(config.simulation_iterations)) {
+            throw std::runtime_error("[ERROR] Simulation mismatch for " + sym->to_string());
+        }
+        hash_term_map[node_data_map[sym].hash()].push_back(sym);
+    }
+
+    int count = 0;
+    int unsat_count = 0;
+    int sat_count = 0;
+    int iterations_copy = config.simulation_iterations;
+    std::chrono::milliseconds total_sat_time(0);
+    std::chrono::milliseconds total_unsat_time(0);
+    std::chrono::milliseconds ordering_time(0);
+
+    post_order(root,
+               node_data_map,
+               hash_term_map,
+               substitution_map,
+               all_luts,
+               count,
+               unsat_count,
+               sat_count,
+               solver,
+               iterations_copy,
+               config.dump_smt,
+               config.solver_timeout_ms,
+               config.debug,
+               dump_path,
+               load_path,
+               total_sat_time,
+               total_unsat_time,
+               ordering_time,
+               options.find_unsat,
+               options.find_sat);
+
+    if (auto it = substitution_map.find(root); it != substitution_map.end()) {
+        root = it->second;
+    }
+
+    stats.solver_queries = count;
+    stats.unsat_count = unsat_count;
+    stats.sat_count = sat_count;
+    stats.total_sat_time = total_sat_time;
+    stats.total_unsat_time = total_unsat_time;
+    stats.ordering_time = ordering_time;
+    stats.hash_map_size = hash_term_map.size();
+    stats.substitution_map_size = substitution_map.size();
+    stats.node_data_map_size = node_data_map.size();
+    return stats;
+}
 
 
 } // namespace sweeper

@@ -11,6 +11,24 @@
 
 namespace sweeper {
 
+struct SweeperOptions {
+    int find_unsat;
+    int find_sat;
+    std::vector<wasim::TransitionSystem*> systems;
+};
+
+struct SweeperStats {
+    int solver_queries = 0;
+    int unsat_count = 0;
+    int sat_count = 0;
+    std::chrono::milliseconds total_sat_time{0};
+    std::chrono::milliseconds total_unsat_time{0};
+    std::chrono::milliseconds ordering_time{0};
+    size_t hash_map_size = 0;
+    size_t substitution_map_size = 0;
+    size_t node_data_map_size = 0;
+};
+
 // pre-collect constants
 void pre_collect_constants(const std::vector<smt::Term>& traversal_roots,
                            std::unordered_map<smt::Term, NodeData>& node_data_map,
@@ -29,7 +47,14 @@ void post_order(const smt::Term & root,
                 int timeout_ms, bool debug,
                 std::string & dump_file_path, std::string & load_file_path,
                 std::chrono::milliseconds & total_sat_time,
-                std::chrono::milliseconds & total_unsat_time,
-                std::chrono::milliseconds & ordering_time);
+                 std::chrono::milliseconds & total_unsat_time,
+                 std::chrono::milliseconds & ordering_time,
+                 int required_unsat,
+                 int required_sat);
+
+SweeperStats sweeper(smt::Term & root,
+                     smt::SmtSolver & solver,
+                     const Config & config,
+                     const SweeperOptions & options);
 
 } // namespace sweeper

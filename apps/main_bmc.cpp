@@ -1,6 +1,4 @@
 #include "sweeper/config.hpp"
-#include "sweeper/simulation_engine.hpp"
-#include "sweeper/node_data.hpp"
 #include "sweeper/sweeper_engine.hpp"
 
 #include "smt-switch/bitwuzla_factory.h"
@@ -67,48 +65,24 @@ int main(int argc, char* argv[]) {
         solver->assert_formula(c);
     }
 
-    std::unordered_map<smt::Term, NodeData> node_data_map;
-    std::unordered_map<uint32_t, smt::TermVec> hash_term_map;
-    std::unordered_map<smt::Term, smt::Term> substitution_map;
-    std::unordered_map<smt::Term, std::unordered_map<std::string, std::string>> all_luts;
-
-    smt::UnorderedTermSet free_symbols;
-    smt::get_free_symbols(root, free_symbols);
-    std::cout << "[INPUT] Free symbols: " << free_symbols.size() << "\n";
-
-    initialize_arrays({&sts}, all_luts, substitution_map, config.debug);
-    simulation(free_symbols, config.simulation_iterations, node_data_map,
-               config.dump_input_file, config.load_input_file);
-
-    for (const auto & s : free_symbols) {
-        if (node_data_map[s].get_simulation_data().size() != static_cast<size_t>(config.simulation_iterations)) {
-            throw std::runtime_error("[ERROR] Simulation mismatch for " + s->to_string());
-        }
-        // substitution_map[s] = s;
-        hash_term_map[node_data_map[s].hash()].push_back(s);
-    }
-
-    int count = 0;
-    int unsat_count = 0;
-    int sat_count = 0;
     int total_nodes = 0;
-    std::chrono::milliseconds total_sat_time(0);
-    std::chrono::milliseconds total_unsat_time(0);
-    std::chrono::milliseconds ordering_time(0);
-
-    // post_order(root, node_data_map, hash_term_map, substitution_map,
-    //            all_luts, count, unsat_count, sat_count, solver,
-    //            config.simulation_iterations, config.dump_smt,
-    //            config.solver_timeout_ms,
-    //            config.debug, config.dump_input_file, config.load_input_file,
-    //            total_sat_time, total_unsat_time, ordering_time);
-
-    // root = substitution_map.at(root);
     count_total_nodes(root, total_nodes);
     auto pre_done = std::chrono::high_resolution_clock::now();
     auto pre_time = std::chrono::duration_cast<std::chrono::milliseconds>(pre_done - program_start).count();
     std::cout << "[Pre-processing] " << pre_time/1000.0 << " s, total nodes: " << total_nodes << "\n";
-    std::cout << "[Ordering Time] " << ordering_time.count()/1000.0 << " s\n";
+
+    sweeper::SweeperOptions sweeper_opts;
+    sweeper_opts.find_unsat = config.find_unsat;
+    sweeper_opts.find_sat = config.find_sat;
+    sweeper_opts.systems = { &sts };
+
+    auto sweeper_stats = sweeper::sweeper(
+        root,
+        solver,
+        config,
+        sweeper_opts);
+
+    std::cout << "[Ordering Time] " << sweeper_stats.ordering_time.count()/1000.0 << " s\n";
 
     int solve_time_ms = 0;
     auto solving_start = std::chrono::high_resolution_clock::now();
@@ -123,24 +97,22 @@ int main(int argc, char* argv[]) {
     std::cout << "[Solving] " << solve_time_ms/1000.0 << " s\n";
 
     if (res.is_unsat()) {
-        total_unsat_time += std::chrono::milliseconds(solve_time_ms);
         std::cout << "[RESULT] Bound " << config.bound << " passed.\n";
     } else if (res.is_sat()) {
-        total_sat_time += std::chrono::milliseconds(solve_time_ms);
         std::cout << "[RESULT] Failed at bound " << config.bound << "\n";
     } else {
         std::cerr << "[ERROR] Solver returned UNKNOWN.\n";
     }
 
-    std::cout << "Sweeping: " << count
-            << ", [UNSAT] " << unsat_count << " ("
-            << total_unsat_time.count()/1000.0 << " s), "
-            << "[SAT] " << sat_count << " ("
-            << total_sat_time.count()/1000.0 << " s)\n";
+    std::cout << "Sweeping: " << sweeper_stats.solver_queries
+            << ", [UNSAT] " << sweeper_stats.unsat_count << " ("
+            << sweeper_stats.total_unsat_time.count()/1000.0 << " s), "
+            << "[SAT] " << sweeper_stats.sat_count << " ("
+            << sweeper_stats.total_sat_time.count()/1000.0 << " s)\n";
 
-    std::cout << "[Hash Map Size] " << hash_term_map.size() << "\n";
-    std::cout << "[Substitution Map Size] " << substitution_map.size() << "\n";
-    std::cout << "[Node Data Map Size] " << node_data_map.size() << "\n";
+    std::cout << "[Hash Map Size] " << sweeper_stats.hash_map_size << "\n";
+    std::cout << "[Substitution Map Size] " << sweeper_stats.substitution_map_size << "\n";
+    std::cout << "[Node Data Map Size] " << sweeper_stats.node_data_map_size << "\n";
 
 
 

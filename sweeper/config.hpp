@@ -25,6 +25,8 @@ struct Config {
     int bound = 0;
     std::string dump_input_file;
     std::string load_input_file;
+    int find_unsat = 50;
+    int find_sat = 1;
 };
 
 inline void print_usage(const char* prog_name) {
@@ -39,6 +41,8 @@ inline void print_usage(const char* prog_name) {
               << "  --load_input, -l      : Load input simulation data from the file path\n"
               << "  --dump_smt            : Enable/disable SMT dump (default: disable)\n"
               << "  --debug               : Enable/disable debug information (default: disable)\n"
+              << "  --find_unsat          : Number of UNSAT proofs before switching to apply-only (default: 50)\n"
+              << "  --find_sat            : Number of SAT counterexamples before switching to apply-only (default: 1)\n"
               << "  --help, -h            : Show this help message\n";
 }
 
@@ -53,6 +57,8 @@ inline bool parse_arguments(int argc, char* argv[], Config& config) {
         {"load_input", required_argument, nullptr, 'l'},
         {"dump_smt", no_argument, nullptr, 1},
         {"debug", no_argument, nullptr, 2},
+        {"find_unsat", required_argument, nullptr, 3},
+        {"find_sat", required_argument, nullptr, 4},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}
     };
@@ -70,6 +76,8 @@ inline bool parse_arguments(int argc, char* argv[], Config& config) {
             case 'l': config.load_input_file = optarg; break;
             case 1:   config.dump_smt = true; break;
             case 2:   config.debug = true; break;
+            case 3:   config.find_unsat = std::max(0, std::atoi(optarg)); break;
+            case 4:   config.find_sat = std::max(0, std::atoi(optarg)); break;
             case 'h': print_usage(argv[0]); std::exit(EXIT_SUCCESS);
             default:  print_usage(argv[0]); return false;
         }
